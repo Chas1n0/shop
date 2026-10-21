@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Allow: /api/shop/image/
+Sitemap: https://chasemcdougall.com/sitemap.xml
