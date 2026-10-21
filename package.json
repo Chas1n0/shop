@@ -1,0 +1,19 @@
+{
+  "name": "chase-mcdougall-shop",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "node scripts/check.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "password": "node scripts/password.mjs",
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^10.0.0",
+    "iron-session": "^8.0.4",
+    "stripe": "^22.6.0"
+  },
+  "devDependencies": { "netlify-cli": "^23.0.0" }
+}
