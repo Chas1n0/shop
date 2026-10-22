@@ -1,5 +1,6 @@
 import { $, esc, cash, api, post, toast, hanger, dialogs } from './shared.js';
-let catalog, category = 'All', currentProduct;
+import { photosFor } from './photos.js';
+let catalog, category = 'All', currentProduct, galleryIndex = 0;
 let bag = [];
 try { const saved = JSON.parse(localStorage.getItem('chase-bag') || '[]'); if (Array.isArray(saved)) bag = saved.filter(i => typeof i?.productId === 'string' && typeof i.variantId === 'string' && Number.isInteger(i.quantity) && i.quantity > 0 && i.quantity <= 10).slice(0, 25); } catch {}
 const saveBag = () => { try { localStorage.setItem('chase-bag', JSON.stringify(bag)); } catch {} $('#bag-count').textContent = bag.reduce((n,i) => n + i.quantity, 0); };
@@ -13,10 +14,29 @@ function showProducts() {
 }
 function detail(id) {
   currentProduct = catalog.products.find(p => p.id === id); if (!currentProduct) return;
+  galleryIndex = 0;
   const p = currentProduct; $('#detail-title').textContent = p.title;
-  $('#product-detail').innerHTML = `${image(p, 'detail-image')}<p class="description">${esc(p.description)}</p><p>${cash(p.priceCents)}</p><label class="field">Size / color<select id="variant">${p.variants.map(v => `<option value="${v.id}" ${!v.stock ? 'disabled' : ''}>${esc(v.size)} / ${esc(v.color)}${v.stock ? '' : ' — sold out'}</option>`).join('')}</select></label><label class="field">Quantity<input id="detail-quantity" type="number" min="1" max="10" value="1"></label><button id="add-to-bag" class="primary full" ${p.variants.every(v=>!v.stock) ? 'disabled' : ''}>${p.variants.every(v=>!v.stock) ? 'Sold out' : 'Add to bag'}</button><p class="small muted">Shipping calculated in your bag. ${!catalog.checkoutReady ? 'Checkout is not open yet.' : ''}</p>`;
+  $('#product-detail').innerHTML = `${productGallery(p)}<p class="description">${esc(p.description)}</p><p>${cash(p.priceCents)}</p><label class="field">Size / color<select id="variant">${p.variants.map(v => `<option value="${v.id}" ${!v.stock ? 'disabled' : ''}>${esc(v.size)} / ${esc(v.color)}${v.stock ? '' : ' — sold out'}</option>`).join('')}</select></label><label class="field">Quantity<input id="detail-quantity" type="number" min="1" max="10" value="1"></label><button id="add-to-bag" class="primary full" ${p.variants.every(v=>!v.stock) ? 'disabled' : ''}>${p.variants.every(v=>!v.stock) ? 'Sold out' : 'Add to bag'}</button><p class="small muted">Shipping calculated in your bag. ${!catalog.checkoutReady ? 'Checkout is not open yet.' : ''}</p>`;
   $('#product-dialog').showModal();
 }
+function productGallery(product) {
+  const photos = photosFor(product);
+  if (!photos.length) return `<div class="product-image">${hanger}</div>`;
+  return `<section id="product-gallery" aria-label="Product photo gallery"><div class="gallery-main"><img id="gallery-image" class="detail-image" src="${esc(photos[0])}" alt="${esc(product.title)} — photo 1 of ${photos.length}">${photos.length > 1 ? '<button type="button" class="gallery-arrow gallery-prev" data-gallery-step="-1" aria-label="Previous photo">‹</button><button type="button" class="gallery-arrow gallery-next" data-gallery-step="1" aria-label="Next photo">›</button>' : ''}</div>${photos.length > 1 ? `<p id="gallery-count" class="small muted gallery-count" role="status" aria-live="polite">Photo 1 of ${photos.length}</p><div class="gallery-thumbnails">${photos.map((src, index) => `<button type="button" data-gallery-index="${index}" aria-label="Show photo ${index + 1}" aria-pressed="${index === 0}"><img src="${esc(src)}" alt="" loading="lazy"></button>`).join('')}</div>` : ''}</section>`;
+}
+function selectPhoto(index) {
+  const photos = photosFor(currentProduct);
+  if (!photos.length) return;
+  galleryIndex = (index + photos.length) % photos.length;
+  const main = $('#gallery-image');
+  main.src = photos[galleryIndex]; main.alt = `${currentProduct.title} — photo ${galleryIndex + 1} of ${photos.length}`;
+  const count = $('#gallery-count'); if (count) count.textContent = `Photo ${galleryIndex + 1} of ${photos.length}`;
+  for (const button of document.querySelectorAll('[data-gallery-index]')) button.setAttribute('aria-pressed', String(Number(button.dataset.galleryIndex) === galleryIndex));
+}
+document.addEventListener('keydown', e => {
+  if (!e.target.closest('#product-gallery') || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+  e.preventDefault(); selectPhoto(galleryIndex + (e.key === 'ArrowLeft' ? -1 : 1));
+});
 function bagRows() {
   let subtotal = 0, valid = true;
   const rows = bag.map((item,index) => {
@@ -35,6 +55,9 @@ function showBag() {
 }
 $('#open-bag').addEventListener('click', () => { showBag(); $('#bag-dialog').showModal(); });
 document.addEventListener('click', async e => {
+  const thumbnail = e.target.closest('[data-gallery-index]'); if (thumbnail) selectPhoto(Number(thumbnail.dataset.galleryIndex));
+  const step = e.target.closest('[data-gallery-step]'); if (step) selectPhoto(galleryIndex + Number(step.dataset.galleryStep));
+
   const filter = e.target.closest('[data-category]'); if (filter) { category = filter.dataset.category; showProducts(); }
   const p = e.target.closest('[data-product]'); if (p) detail(p.dataset.product);
   if (e.target.closest('#add-to-bag')) {

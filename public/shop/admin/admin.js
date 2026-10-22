@@ -1,5 +1,6 @@
 import { $, esc, cash, api, post, toast, hanger, dialogs } from '../shared.js';
-let state, tab = 'products', editing, editRevision;
+import { MAX_IMAGES, photosFor, addPhoto, movePhoto } from '../photos.js';
+let state, tab = 'products', editing, editRevision, editorImages = [], uploadingPhotos = false;
 dialogs();
 function login(message = '') {
   $('#app').innerHTML = `<section class="login-wrap"><span class="eyebrow">For your eyes only</span><h1>Welcome back.</h1><p class="description">Sign in to manage your collection and orders.</p><form id="login-form"><label class="field">Email<input name="email" type="email" autocomplete="username" required></label><label class="field">Password<input name="password" type="password" autocomplete="current-password" required maxlength="256"></label><p id="login-error" class="small danger" role="alert">${esc(message)}</p><button class="primary full" type="submit">Sign in ↗</button></form><p class="small muted">Manager access is configured in your Netlify environment settings. There is no public registration.</p></section>`;
@@ -28,10 +29,23 @@ function variantRow(v = {}) {
 function editor(id) {
   editing = state.products.find(p => p.id === id); editRevision = state.revision;
   const p = editing || { title:'', priceCents:0, description:'', image:'', category:'Clothing', active:false, variants:[{size:'M',color:'Black',stock:0}] };
+  editorImages = photosFor(p);
   $('#editor-title').textContent = editing ? 'Edit product' : 'Add a product';
-  $('#product-form').innerHTML = `<label class="field">Product title<input name="title" value="${esc(p.title)}" maxlength="120" required placeholder="The everyday tee"></label><div class="row"><label class="field">Price (USD)<input name="price" type="number" min="0.01" max="100000" step="0.01" value="${p.priceCents ? (p.priceCents / 100).toFixed(2) : ''}" required placeholder="0.00"></label><label class="field">Category<input name="category" value="${esc(p.category)}" maxlength="40" list="categories"><datalist id="categories"><option>Tees</option><option>Hoodies</option><option>Outerwear</option><option>Accessories</option><option>Clothing</option></datalist></label></div><label class="field">Description<textarea name="description" maxlength="4000" placeholder="Fit, fabric, condition, and anything else buyers should know.">${esc(p.description)}</textarea></label><label class="field">Cover image<input name="image" value="${esc(p.image)}" placeholder="Upload below or paste an HTTPS image URL"><small>Use a clear product photo. JPEG, PNG, WebP, or GIF, under 3 MB.</small></label><label class="field">Upload photo<input id="photo-upload" type="file" accept="image/jpeg,image/png,image/webp,image/gif"></label><p id="upload-status" class="small muted" role="status"></p><div id="photo-preview">${p.image ? `<img class="detail-image" src="${esc(p.image)}" alt="Product preview">` : ''}</div><h3>Sizes, colors & stock</h3><p class="small muted">Stock is the quantity available to buy, excluding items reserved by pending checkouts.</p><div class="variant-labels"><span>Size</span><span>Color</span><span>Available</span><span></span></div><div id="variant-rows">${p.variants.map(variantRow).join('')}</div><button type="button" id="add-variant" class="secondary">+ Add size / color</button><label class="checkbox"><input name="active" type="checkbox" ${p.active ? 'checked' : ''}>Publish in the shop</label><p class="small muted">Uncheck to hide a product without deleting its order history.</p><p id="product-error" class="small danger" role="alert"></p><button class="primary full" type="submit">Save product</button>`;
+  $('#product-form').innerHTML = `<label class="field">Product title<input name="title" value="${esc(p.title)}" maxlength="120" required placeholder="The everyday tee"></label><div class="row"><label class="field">Price (USD)<input name="price" type="number" min="0.01" max="100000" step="0.01" value="${p.priceCents ? (p.priceCents / 100).toFixed(2) : ''}" required placeholder="0.00"></label><label class="field">Category<input name="category" value="${esc(p.category)}" maxlength="40" list="categories"><datalist id="categories"><option>Tees</option><option>Hoodies</option><option>Outerwear</option><option>Accessories</option><option>Clothing</option></datalist></label></div><label class="field">Description<textarea name="description" maxlength="4000" placeholder="Fit, fabric, condition, and anything else buyers should know.">${esc(p.description)}</textarea></label><h3>Product photos</h3><p class="small muted">Add up to ${MAX_IMAGES} photos. The first photo is your cover image. JPEG, PNG, WebP, or GIF; under 3 MB each.</p><label class="field">Upload photos<input id="photo-upload" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple></label><div class="photo-url-row"><label class="field">Or add an image URL<input name="imageUrl" type="url" placeholder="https://example.com/photo.jpg"></label><button type="button" id="add-photo-url" class="secondary">Add photo</button></div><p id="upload-status" class="small muted" role="status"></p><div id="photo-preview" class="photo-editor-grid"></div><h3>Sizes, colors & stock</h3><p class="small muted">Stock is the quantity available to buy, excluding items reserved by pending checkouts.</p><div class="variant-labels"><span>Size</span><span>Color</span><span>Available</span><span></span></div><div id="variant-rows">${p.variants.map(variantRow).join('')}</div><button type="button" id="add-variant" class="secondary">+ Add size / color</button><label class="checkbox"><input name="active" type="checkbox" ${p.active ? 'checked' : ''}>Publish in the shop</label><p class="small muted">Uncheck to hide a product without deleting its order history.</p><p id="product-error" class="small danger" role="alert"></p><button class="primary full" type="submit">Save product</button>`;
+  renderEditorPhotos();
   $('#editor').showModal();
 }
+function renderEditorPhotos() {
+  $('#photo-preview').innerHTML = editorImages.length ? editorImages.map((src, index) => `<div class="photo-editor-card"><img src="${esc(src)}" alt="Product photo ${index + 1}"><span class="photo-cover-label">${index === 0 ? 'Cover photo' : `Photo ${index + 1}`}</span><div class="photo-editor-actions"><button type="button" class="text-button" data-photo-cover="${index}" ${index === 0 || uploadingPhotos ? 'disabled' : ''}>Make cover</button><button type="button" class="text-button danger" data-photo-remove="${index}" ${uploadingPhotos ? 'disabled' : ''}>Remove</button></div><div class="photo-editor-actions"><button type="button" class="secondary" data-photo-move="${index}" data-direction="-1" aria-label="Move photo ${index + 1} earlier" ${index === 0 || uploadingPhotos ? 'disabled' : ''}>←</button><button type="button" class="secondary" data-photo-move="${index}" data-direction="1" aria-label="Move photo ${index + 1} later" ${index === editorImages.length - 1 || uploadingPhotos ? 'disabled' : ''}>→</button></div></div>`).join('') : '<p class="small muted">No photos yet. Upload photos or add an image URL above.</p>';
+}
+function addPhotoURL() {
+  const input = $('#product-form input[name=imageUrl]');
+  editorImages = addPhoto(editorImages, input.value);
+  input.value = '';
+  renderEditorPhotos();
+}
+$('#editor').addEventListener('cancel', e => { if (uploadingPhotos) e.preventDefault(); });
+$('#editor').addEventListener('click', e => { if (uploadingPhotos && e.target === $('#editor')) e.stopImmediatePropagation(); }, { capture: true });
 function address(a) { if (!a) return 'Not collected'; return [a.line1,a.line2,[a.city,a.state,a.postal_code].filter(Boolean).join(', '),a.country].filter(Boolean).map(esc).join('\n'); }
 function orders() {
   const list = Object.values(state.orders).sort((a,b) => b.createdAt.localeCompare(a.createdAt));
@@ -42,6 +56,15 @@ function settings() {
   $('#workspace-content').innerHTML = `<form id="settings-form" class="settings-form"><div class="panel"><h2>The storefront</h2><label class="field">Shop title<input name="title" value="${esc(s.title)}" maxlength="80" required></label><label class="field">Short description<input name="tagline" value="${esc(s.tagline)}" maxlength="200"></label><label class="field">Customer support email<input name="contactEmail" value="${esc(s.contactEmail)}" type="email" maxlength="254" placeholder="you@example.com"></label></div><div class="panel"><h2>Shipping & returns</h2><label class="field">Flat shipping per order (USD)<input name="shipping" type="number" min="0" max="100000" step="0.01" value="${(s.shippingCents/100).toFixed(2)}" required><small>0 means free shipping. This applies to every selected country.</small></label><label class="field">Countries you ship to<select name="countries" multiple size="5">${[['US','United States'],['CA','Canada'],['GB','United Kingdom'],['AU','Australia'],['NZ','New Zealand'],['DE','Germany'],['FR','France'],['IE','Ireland'],['NL','Netherlands']].map(([c,n])=>`<option value="${c}" ${s.countries.includes(c)?'selected':''}>${n}</option>`).join('')}</select><small>Hold Ctrl (Windows) or Command (Mac) to choose multiple countries.</small></label><label class="field">Shipping policy<textarea name="shippingPolicy" maxlength="4000" placeholder="Where you ship, processing times, estimated delivery, and how customers can reach you.">${esc(s.shippingPolicy)}</textarea></label><label class="field">Return policy<textarea name="returnPolicy" maxlength="4000" placeholder="Return window, item condition, who pays return shipping, and how to request a return.">${esc(s.returnPolicy)}</textarea></label></div><div class="panel"><h2>Open for business</h2><label class="checkbox"><input name="checkoutEnabled" type="checkbox" ${s.checkoutEnabled?'checked':''}>Enable checkout</label><p class="small muted">Requires Stripe credentials, a webhook signing secret, and the contact and policy details above. Use a test key until a complete test order passes. Live payments require your activated Stripe account.</p><p class="small muted">Sales tax automation is not enabled. Configure applicable tax collection before taking orders where required. Refunds and disputes are managed in Stripe.</p></div><p id="settings-error" class="small danger" role="alert"></p><button class="primary" type="submit">Save settings</button></form>`;
 }
 document.addEventListener('click', async e => {
+  if (uploadingPhotos && e.target.closest('#editor')) { if (e.target.closest('[data-close]')) e.stopImmediatePropagation(); return; }
+  if (e.target.closest('#add-photo-url')) { try { addPhotoURL(); } catch (err) { toast(err.message); } }
+  const coverPhoto = e.target.closest('[data-photo-cover]');
+  if (coverPhoto) { editorImages = movePhoto(editorImages, Number(coverPhoto.dataset.photoCover), 0); renderEditorPhotos(); }
+  const removePhoto = e.target.closest('[data-photo-remove]');
+  if (removePhoto) { editorImages.splice(Number(removePhoto.dataset.photoRemove), 1); renderEditorPhotos(); }
+  const move = e.target.closest('[data-photo-move]');
+  if (move) { const from = Number(move.dataset.photoMove); editorImages = movePhoto(editorImages, from, from + Number(move.dataset.direction)); renderEditorPhotos(); }
+
   const t = e.target.closest('[data-tab]'); if (t) { tab = t.dataset.tab; render(); }
   if (e.target.closest('#new-product, #empty-add')) editor();
   const edit = e.target.closest('[data-edit]'); if (edit) editor(edit.dataset.edit);
@@ -52,20 +75,40 @@ document.addEventListener('click', async e => {
   const reconcile = e.target.closest('[data-reconcile]'); if (reconcile) { reconcile.disabled = true; try { await post('orders/reconcile',{id:reconcile.dataset.reconcile}); await refresh(); toast('Payment status checked.'); } catch(err) { toast(err.message); reconcile.disabled = false; } }
 });
 document.addEventListener('change', async e => {
-  if (e.target.id !== 'photo-upload' || !e.target.files[0]) return;
-  const file = e.target.files[0]; if (file.size > 3*1024*1024) return toast('Choose an image under 3 MB.');
-  const button = $('#product-form button[type=submit]'); button.disabled = true; $('#upload-status').textContent = 'Uploading photo…';
-  try { const data = await api('upload',{method:'POST',headers:{'Content-Type':file.type},body:file}); $('#product-form input[name=image]').value = data.image; $('#photo-preview').innerHTML = `<img class="detail-image" src="${esc(data.image)}" alt="Product preview">`; $('#upload-status').textContent = 'Photo uploaded.'; }
-  catch(err) { $('#upload-status').textContent = err.message; } finally { button.disabled = false; }
+  if (e.target.id !== 'photo-upload' || !e.target.files.length || uploadingPhotos) return;
+  const input = e.target, files = [...input.files];
+  if (files.length + editorImages.length > MAX_IMAGES) { input.value = ''; return toast(`You can add ${MAX_IMAGES - editorImages.length} more photos.`); }
+  if (files.some(file => file.size > 3 * 1024 * 1024)) { input.value = ''; return toast('Each photo must be under 3 MB.'); }
+  const button = $('#product-form button[type=submit]');
+  uploadingPhotos = true; button.disabled = true; input.disabled = true;
+  $('#add-photo-url').disabled = true;
+  $('#editor [data-close]').disabled = true;
+  renderEditorPhotos();
+  let uploaded = 0;
+  try {
+    for (const file of files) {
+      $('#upload-status').textContent = `Uploading photo ${uploaded + 1} of ${files.length}…`;
+      const data = await api('upload', { method:'POST', headers:{'Content-Type':file.type}, body:file });
+      editorImages = addPhoto(editorImages, data.image);
+      uploaded++; renderEditorPhotos();
+    }
+    $('#upload-status').textContent = `${uploaded} ${uploaded === 1 ? 'photo' : 'photos'} uploaded. Save the product to keep your changes.`;
+  } catch(err) { $('#upload-status').textContent = `${uploaded} uploaded. ${err.message} Uploaded photos are still available below.`; }
+  finally {
+    uploadingPhotos = false; button.disabled = false; input.disabled = false; input.value = '';
+    $('#add-photo-url').disabled = false; $('#editor [data-close]').disabled = false;
+    renderEditorPhotos();
+  }
 });
 document.addEventListener('submit', async e => {
   const f = e.target;
   if (!['product-form','settings-form'].includes(f.id) && !f.classList.contains('fulfill-form')) return;
-  e.preventDefault(); const data = new FormData(f), button = $('button[type=submit]', f); button.disabled = true;
+  e.preventDefault(); if (uploadingPhotos) return; const data = new FormData(f), button = $('button[type=submit]', f); button.disabled = true;
   try {
     if (f.id === 'product-form') {
+      addPhotoURL();
       const variants = [...$('#variant-rows').children].map(row => ({ id:row.dataset.id, size:$('[data-variant=size]',row).value, color:$('[data-variant=color]',row).value, stock:Number($('[data-variant=stock]',row).value) }));
-      await post('products',{revision:editRevision,product:{id:editing?.id,title:data.get('title'),priceCents:Math.round(Number(data.get('price'))*100),category:data.get('category'),description:data.get('description'),image:data.get('image'),active:data.has('active'),variants}});
+      await post('products',{revision:editRevision,product:{id:editing?.id,title:data.get('title'),priceCents:Math.round(Number(data.get('price'))*100),category:data.get('category'),description:data.get('description'),image:editorImages[0] || '',images:[...editorImages],active:data.has('active'),variants}});
       $('#editor').close(); await refresh(); toast('Product saved.');
     } else if (f.id === 'settings-form') {
       await post('settings',{revision:state.revision,settings:{title:data.get('title'),tagline:data.get('tagline'),contactEmail:data.get('contactEmail'),shippingCents:Math.round(Number(data.get('shipping'))*100),countries:data.getAll('countries'),shippingPolicy:data.get('shippingPolicy'),returnPolicy:data.get('returnPolicy'),checkoutEnabled:data.has('checkoutEnabled')}});

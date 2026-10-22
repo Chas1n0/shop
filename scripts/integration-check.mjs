@@ -42,9 +42,19 @@ try {
   const image=await fetch(base+'/api/shop/upload',{method:'POST',headers:{Origin:base,Cookie:cookie,'Content-Type':'image/png'},body:Buffer.from('89504e470d0a1a0a00000000','hex')});
   assert.equal(image.status,200);const imageData=await image.json();
   const downloaded=await fetch(base+imageData.image);assert.equal(downloaded.headers.get('content-type'),'image/png');
+  s=await request('admin');
+  let edited=s.products.find(p=>p.id===result.product.id);
+  const gallery=[imageData.image,'https://example.com/back.jpg'];
+  await request('products',{revision:s.revision,product:{...edited,images:gallery}});
+  let published=(await request('catalog')).products.find(p=>p.id===edited.id);
+  assert.deepEqual(published.images,gallery);assert.equal(published.image,gallery[0]);
+  s=await request('admin');edited=s.products.find(p=>p.id===edited.id);
+  await request('products',{revision:s.revision,product:{...edited,images:[...gallery].reverse()}});
+  published=(await request('catalog')).products.find(p=>p.id===edited.id);
+  assert.equal(published.image,gallery[1]);assert.deepEqual(published.images,[...gallery].reverse());
   const badImage=await fetch(base+'/api/shop/upload',{method:'POST',headers:{Origin:base,Cookie:cookie},body:'<svg>bad image</svg>'});assert.equal(badImage.status,400);
   await request('logout',{});
   await request('admin',undefined,401);
-  console.log('PASS: Netlify pages, real local Blobs, login/logout, private admin, product CRUD, public catalog, stale-write protection, CSRF, disabled checkout, fulfillment guard, image upload/read, and unsafe-image rejection.');
+  console.log('PASS: Netlify pages, real local Blobs, login/logout, private admin, product CRUD, persisted gallery order/cover images, public catalog, stale-write protection, CSRF, disabled checkout, fulfillment guard, image upload/read, and unsafe-image rejection.');
 } catch(error){console.error(error.message);process.exitCode=1;}
 finally{try{process.kill(-child.pid,'SIGTERM');}catch{child.kill();}}

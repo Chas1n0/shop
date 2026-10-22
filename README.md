@@ -6,7 +6,9 @@ Your original link homepage and profile image, plus a clothing storefront and pr
 
 - `/` — original homepage, with the new Shop button.
 - `/shop/` — products, sizes/colors, shopping bag, shipping/return/privacy details, and Stripe-hosted checkout.
-- `/shop/admin/` — manager login, product drafts/publishing, cover-image uploads, size/color inventory, paid orders, billing and shipping addresses, tracking notes, and shop settings.
+- `/shop/admin/` — manager login, product drafts/publishing, multiple-photo uploads, size/color inventory, paid orders, billing and shipping addresses, tracking notes, and shop settings.
+
+Each product supports up to **12 photos**, uploaded together or added using HTTPS image links. Photos must be JPEG, PNG, WebP, or GIF and under 3 MB each. Use **Make cover** or the arrow buttons to choose and order images; remove photos individually. Click **Save product** to publish the changes. Shoppers can browse photos using thumbnails, previous/next buttons, or keyboard arrows. Existing single-photo products continue working without migration.
 
 Product, order, image, and session data live in site-wide Netlify Blobs and survive redeploys. Non-production deployments have separate storage. There are no hardcoded/demo products. New stores show an honest empty collection until you publish a product.
 
